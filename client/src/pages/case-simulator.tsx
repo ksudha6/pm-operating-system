@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,8 +21,65 @@ import {
   ArrowRight,
   History,
   Sparkles,
+  Timer,
 } from "lucide-react";
 import type { CaseSession, CaseMessage } from "@shared/schema";
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function CaseCountdownTimer({
+  totalSeconds,
+  createdAt,
+  onExpire,
+}: {
+  totalSeconds: number;
+  createdAt: string;
+  onExpire: () => void;
+}) {
+  const [remaining, setRemaining] = useState(() => {
+    const elapsed = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+    return Math.max(0, totalSeconds - elapsed);
+  });
+  const expiredRef = useRef(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRemaining((prev) => {
+        const next = prev - 1;
+        if (next <= 0 && !expiredRef.current) {
+          expiredRef.current = true;
+          setTimeout(() => onExpire(), 0);
+          return 0;
+        }
+        return Math.max(0, next);
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [onExpire]);
+
+  const isUrgent = remaining <= 120;
+  const isWarning = remaining <= 300 && remaining > 120;
+  const pct = (remaining / totalSeconds) * 100;
+
+  return (
+    <div className="flex items-center gap-2" data-testid="case-timer-countdown">
+      <Timer className={`h-4 w-4 ${isUrgent ? "text-destructive animate-pulse" : isWarning ? "text-yellow-500" : "text-muted-foreground"}`} />
+      <span className={`text-sm font-mono font-semibold tabular-nums ${isUrgent ? "text-destructive" : isWarning ? "text-yellow-500" : ""}`}>
+        {formatTime(remaining)}
+      </span>
+      <div className="w-20 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-1000 ${isUrgent ? "bg-destructive" : isWarning ? "bg-yellow-500" : "bg-primary"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 const CASE_TYPES = [
   { value: "product_sense", label: "Product Sense" },
@@ -105,6 +162,11 @@ function CaseSetup({ onStart }: { onStart: (caseType: string, mode: string) => v
             </div>
           )}
 
+          <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 rounded-md bg-muted/50">
+            <Clock className="h-4 w-4 shrink-0" />
+            <span>30 minute time limit &middot; Agoda PM standard</span>
+          </div>
+
           <Button
             className="w-full gap-2"
             onClick={() => onStart(caseType, mode)}
@@ -119,7 +181,7 @@ function CaseSetup({ onStart }: { onStart: (caseType: string, mode: string) => v
   );
 }
 
-function ChatInterface({ session }: { session: CaseSession }) {
+function ChatInterface({ session, onTimerExpire }: { session: CaseSession; onTimerExpire: () => void }) {
   const [input, setInput] = useState("");
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -225,18 +287,27 @@ function ChatInterface({ session }: { session: CaseSession }) {
             {session.status}
           </Badge>
         </div>
-        {session.status === "active" && (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => endMutation.mutate()}
-            disabled={endMutation.isPending}
-            data-testid="button-end-session"
-          >
-            {endMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
-            End & Get Feedback
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {session.status === "active" && (
+            <CaseCountdownTimer
+              totalSeconds={session.timeLimitSeconds}
+              createdAt={session.createdAt as unknown as string}
+              onExpire={onTimerExpire}
+            />
+          )}
+          {session.status === "active" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => endMutation.mutate()}
+              disabled={endMutation.isPending}
+              data-testid="button-end-session"
+            >
+              {endMutation.isPending && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              End & Get Feedback
+            </Button>
+          )}
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-4 pr-2 pb-4">
@@ -477,7 +548,25 @@ export default function CaseSimulator() {
         <CaseSetup onStart={(caseType, caseMode) => startMutation.mutate({ caseType, mode: caseMode })} />
       )}
 
-      {mode === "chat" && activeSession && <ChatInterface session={activeSession} />}
+      {mode === "chat" && activeSession && (
+        <ChatInterface
+          session={activeSession}
+          onTimerExpire={() => {
+            toast({
+              title: "Time's up!",
+              description: "Your case session has been automatically ended. Feedback is being generated.",
+              variant: "destructive",
+            });
+            apiRequest("POST", `/api/cases/sessions/${activeSession.id}/end`)
+              .then((res) => res.json())
+              .then((updated) => {
+                setActiveSession(updated);
+                queryClient.invalidateQueries({ queryKey: ["/api/cases/sessions"] });
+                queryClient.invalidateQueries({ queryKey: ["/api/cases/sessions", activeSession.id, "messages"] });
+              });
+          }}
+        />
+      )}
 
       {mode === "history" && <SessionHistory onSelect={handleSelectSession} />}
     </div>

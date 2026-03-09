@@ -260,6 +260,14 @@ export async function registerRoutes(
     try {
       const { category, difficulty } = req.body;
 
+      const timeLimits: Record<string, number> = {
+        easy: 1200,
+        medium: 900,
+        hard: 720,
+        very_hard: 600,
+      };
+      const timeLimitSeconds = timeLimits[difficulty] || 900;
+
       const attempt = await storage.createAptitudeAttempt({
         category,
         difficulty,
@@ -267,7 +275,7 @@ export async function registerRoutes(
         totalQuestions: 10,
         correctAnswers: 0,
         timeSpentSeconds: 0,
-        timeLimitSeconds: 600,
+        timeLimitSeconds,
         status: "in_progress",
       });
 
@@ -332,6 +340,16 @@ export async function registerRoutes(
       const attempt = await storage.getAptitudeAttempt(existing.attemptId);
       if (!attempt || attempt.userId !== req.session.userId) {
         return res.status(404).json({ error: "Answer not found" });
+      }
+
+      if (attempt.status !== "in_progress") {
+        return res.status(400).json({ error: "Test already completed" });
+      }
+
+      const elapsed = Math.floor((Date.now() - new Date(attempt.createdAt).getTime()) / 1000);
+      if (elapsed > attempt.timeLimitSeconds) {
+        await storage.updateAptitudeAttempt(attempt.id, { status: "completed" });
+        return res.status(400).json({ error: "Time limit exceeded" });
       }
 
       if (existing.selectedAnswer !== null) {
@@ -405,11 +423,14 @@ export async function registerRoutes(
     try {
       const { caseType, mode } = req.body;
 
+      const timeLimitSeconds = 1800;
+
       const session = await storage.createCaseSession({
         caseType,
         mode,
         userId: req.session.userId,
         status: "active",
+        timeLimitSeconds,
         feedback: null,
       });
 
@@ -447,6 +468,16 @@ export async function registerRoutes(
       const session = await storage.getCaseSession(sessionId);
       if (!session || session.userId !== req.session.userId) {
         return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (session.status !== "active") {
+        return res.status(400).json({ error: "Session already ended" });
+      }
+
+      const elapsed = Math.floor((Date.now() - new Date(session.createdAt).getTime()) / 1000);
+      if (elapsed > session.timeLimitSeconds) {
+        await storage.updateCaseSession(sessionId, { status: "completed" });
+        return res.status(400).json({ error: "Time limit exceeded" });
       }
 
       await storage.createCaseMessage({

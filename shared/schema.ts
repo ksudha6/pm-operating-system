@@ -91,6 +91,7 @@ export const caseSessions = pgTable("case_sessions", {
   caseType: text("case_type").notNull(),
   mode: text("mode").notNull().default("L6"),
   status: text("status").notNull().default("active"),
+  timeLimitSeconds: integer("time_limit_seconds").notNull().default(1800),
   feedback: text("feedback"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   completedAt: timestamp("completed_at"),

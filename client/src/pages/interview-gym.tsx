@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,8 @@ import {
   TrendingUp,
   BarChart3,
   Loader2,
+  AlertTriangle,
+  Timer,
 } from "lucide-react";
 import type { AptitudeAttempt, AptitudeAnswer } from "@shared/schema";
 
@@ -37,6 +39,69 @@ const DIFFICULTIES = [
   { value: "hard", label: "Hard" },
   { value: "very_hard", label: "Very Hard" },
 ];
+
+const TIME_LIMITS: Record<string, number> = {
+  easy: 1200,
+  medium: 900,
+  hard: 720,
+  very_hard: 600,
+};
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function CountdownTimer({
+  totalSeconds,
+  createdAt,
+  onExpire,
+}: {
+  totalSeconds: number;
+  createdAt: string;
+  onExpire: () => void;
+}) {
+  const [remaining, setRemaining] = useState(() => {
+    const elapsed = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+    return Math.max(0, totalSeconds - elapsed);
+  });
+  const expiredRef = useRef(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRemaining((prev) => {
+        const next = prev - 1;
+        if (next <= 0 && !expiredRef.current) {
+          expiredRef.current = true;
+          setTimeout(() => onExpire(), 0);
+          return 0;
+        }
+        return Math.max(0, next);
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [onExpire]);
+
+  const isUrgent = remaining <= 60;
+  const isWarning = remaining <= 120 && remaining > 60;
+  const pct = (remaining / totalSeconds) * 100;
+
+  return (
+    <div className="flex items-center gap-2" data-testid="timer-countdown">
+      <Timer className={`h-4 w-4 ${isUrgent ? "text-destructive animate-pulse" : isWarning ? "text-yellow-500" : "text-muted-foreground"}`} />
+      <span className={`text-sm font-mono font-semibold tabular-nums ${isUrgent ? "text-destructive" : isWarning ? "text-yellow-500" : ""}`}>
+        {formatTime(remaining)}
+      </span>
+      <div className="w-20 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-1000 ${isUrgent ? "bg-destructive" : isWarning ? "bg-yellow-500" : "bg-primary"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 type QuestionData = {
   questionText: string;
@@ -99,7 +164,7 @@ function TestSetup({ onStart }: { onStart: (category: string, difficulty: string
 
           <div className="flex items-center gap-2 text-sm text-muted-foreground p-3 rounded-md bg-muted/50">
             <Clock className="h-4 w-4 shrink-0" />
-            <span>10 questions &middot; 10 minute time limit</span>
+            <span>10 questions &middot; {Math.floor(TIME_LIMITS[difficulty] / 60)} minute time limit</span>
           </div>
 
           <Button
@@ -128,7 +193,7 @@ function ActiveTest({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(attempt.timeLimitSeconds);
+  const [timedOut, setTimedOut] = useState(false);
   const { toast } = useToast();
 
   const currentQuestion = questions[currentIndex];
@@ -159,6 +224,16 @@ function ActiveTest({
     },
   });
 
+  const handleTimerExpire = useCallback(() => {
+    setTimedOut(true);
+    toast({
+      title: "Time's up!",
+      description: "Your test has been automatically submitted.",
+      variant: "destructive",
+    });
+    completeMutation.mutate();
+  }, []);
+
   const handleSubmitAnswer = () => {
     if (selectedAnswer === null || !currentQuestion) return;
     submitMutation.mutate({
@@ -184,6 +259,8 @@ function ActiveTest({
     ? currentQuestion.selectedAnswer === currentQuestion.correctAnswer
     : selectedAnswer === currentQuestion.correctAnswer;
 
+  if (timedOut) return null;
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -200,9 +277,14 @@ function ActiveTest({
             Question {currentIndex + 1} of {questions.length}
           </p>
         </div>
-        <div className="text-right">
+        <div className="flex items-center gap-4">
+          <CountdownTimer
+            totalSeconds={attempt.timeLimitSeconds}
+            createdAt={attempt.createdAt as unknown as string}
+            onExpire={handleTimerExpire}
+          />
           <p className="text-sm font-medium tabular-nums" data-testid="text-answered-count">
-            {answeredCount}/{questions.length} answered
+            {answeredCount}/{questions.length}
           </p>
         </div>
       </div>
