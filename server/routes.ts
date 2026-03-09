@@ -298,25 +298,34 @@ export async function registerRoutes(
       const questions = parsed.questions || [];
       const answers = [];
 
+      const letterToIndex: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
-        let correctedAnswer = q.correctAnswer ?? 0;
+        let correctIndex: number;
 
-        if (q.explanation && q.options) {
-          const explanation = q.explanation.toLowerCase();
-          const optionLetterMap: Record<string, number> = { a: 0, b: 1, c: 2, d: 3 };
-          const mentionPatterns = [
-            /(?:correct answer|answer is|matches option|therefore option|the answer is)\s*(?:option\s*)?([abcd])\b/i,
-            /option\s+([abcd])\s*(?:is correct|is the correct|is right)/i,
-            /\b([abcd])\s*(?:is the correct|is correct)/i,
+        if (q.correctAnswerLetter && letterToIndex[q.correctAnswerLetter.toUpperCase()] !== undefined) {
+          correctIndex = letterToIndex[q.correctAnswerLetter.toUpperCase()];
+        } else if (typeof q.correctAnswer === "number") {
+          correctIndex = q.correctAnswer;
+        } else {
+          correctIndex = 0;
+        }
+
+        if (q.explanation) {
+          const patterns = [
+            /the answer is\s*(?:option\s*)?([abcd])\b/i,
+            /(?:correct answer|correct option|correct choice)\s*(?:is|:)\s*(?:option\s*)?([abcd])\b/i,
+            /option\s+([abcd])\s*(?:is correct|is the correct|is right|is the right)/i,
           ];
-          for (const pattern of mentionPatterns) {
+          for (const pattern of patterns) {
             const match = q.explanation.match(pattern);
             if (match) {
-              const mentionedIndex = optionLetterMap[match[1].toLowerCase()];
-              if (mentionedIndex !== undefined && mentionedIndex !== correctedAnswer) {
-                console.log(`Corrected answer for Q${i + 1}: AI said index ${correctedAnswer} but explanation references option ${match[1].toUpperCase()} (index ${mentionedIndex})`);
-                correctedAnswer = mentionedIndex;
+              const letter = (match[1] || match[2]).toUpperCase();
+              const mentionedIndex = letterToIndex[letter];
+              if (mentionedIndex !== undefined && mentionedIndex !== correctIndex) {
+                console.log(`Q${i + 1}: Corrected from index ${correctIndex} to ${mentionedIndex} (option ${letter}) based on explanation`);
+                correctIndex = mentionedIndex;
               }
               break;
             }
@@ -327,7 +336,7 @@ export async function registerRoutes(
           attemptId: attempt.id,
           questionText: q.question || q.questionText || "",
           options: q.options || [],
-          correctAnswer: correctedAnswer,
+          correctAnswer: correctIndex,
           selectedAnswer: null,
           isCorrect: null,
           timeSpentSeconds: 0,
@@ -734,19 +743,19 @@ function buildAptitudePrompt(category: string, difficulty: string): string {
 Category: ${category} - ${categoryDescriptions[category] || category}
 Difficulty: ${difficulty} - ${difficultyDescriptions[difficulty] || difficulty}
 
-Requirements:
-- Each question should have exactly 4 options (A, B, C, D)
-- Vary the question structure and approach
-- Make questions realistic and relevant to PM interviews
-- Include detailed explanations for the correct answer
-- Randomize where the correct answer appears — don't always put it in the same position
+MANDATORY PROCESS — follow these steps IN ORDER for each question:
+1. Write the question text
+2. Solve the problem completely and determine the exact correct answer VALUE
+3. Create 4 options where ONE option is EXACTLY the correct answer value — the other 3 are plausible wrong answers
+4. Set "correctAnswerLetter" to the letter (A, B, C, or D) of the option that matches the correct answer
+5. Write the explanation showing step-by-step work, ending with "The answer is [letter]."
 
-CRITICAL INSTRUCTIONS FOR correctAnswer:
-- correctAnswer is a 0-based index: A=0, B=1, C=2, D=3
-- You MUST verify your correctAnswer matches your explanation
-- First solve the problem completely, then determine which option matches the solution, then set correctAnswer to that option's index
-- Double-check: if the answer is option A, correctAnswer must be 0. If B, must be 1. If C, must be 2. If D, must be 3.
-- Do NOT confuse the option letter with its index
+STRICT RULES:
+- The correct answer MUST appear as one of the 4 options — no exceptions
+- If the calculation yields a value not in any option, you MUST rewrite the options to include it
+- Vary which position (A/B/C/D) the correct answer appears in across questions
+- Make questions realistic and relevant to PM interviews at companies like Agoda, Google, Meta
+- Each question must have exactly 4 options
 
 Return a JSON object with this exact structure:
 {
@@ -754,13 +763,13 @@ Return a JSON object with this exact structure:
     {
       "question": "The full question text",
       "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
-      "correctAnswer": 0,
-      "explanation": "Detailed step-by-step explanation showing the calculation/reasoning and confirming which option (A/B/C/D) is correct"
+      "correctAnswerLetter": "B",
+      "explanation": "Step-by-step explanation. The answer is B."
     }
   ]
 }
 
-correctAnswer is the 0-indexed position: A=0, B=1, C=2, D=3. Verify it matches your explanation before outputting.`;
+correctAnswerLetter must be exactly one of: "A", "B", "C", or "D".`;
 }
 
 function buildCaseSystemPrompt(caseType: string, mode: string): string {
