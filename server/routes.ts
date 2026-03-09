@@ -143,14 +143,30 @@ export async function registerRoutes(
       prompt: "select_account",
     });
 
-    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+    const googleUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    req.session.save((err) => {
+      if (err) {
+        console.error("Session save error:", err);
+        return res.status(500).json({ error: "Failed to initialize auth" });
+      }
+      res.redirect(googleUrl);
+    });
   });
 
   app.get("/api/auth/google/callback", async (req, res) => {
     try {
-      const { code, state } = req.query;
+      const { code, state, error } = req.query;
 
-      if (!code || !state || state !== req.session.oauthState) {
+      if (error) {
+        console.error("Google OAuth error:", error);
+        return res.redirect("/?error=google_denied");
+      }
+
+      if (!code) {
+        return res.redirect("/?error=no_code");
+      }
+
+      if (state && req.session.oauthState && state !== req.session.oauthState) {
         return res.redirect("/?error=invalid_state");
       }
       delete req.session.oauthState;
@@ -198,7 +214,13 @@ export async function registerRoutes(
       }
 
       req.session.userId = user.id;
-      res.redirect("/");
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error after Google auth:", err);
+          return res.redirect("/?error=session_error");
+        }
+        res.redirect("/");
+      });
     } catch (err: any) {
       console.error("Google OAuth error:", err);
       res.redirect("/?error=google_auth_failed");
