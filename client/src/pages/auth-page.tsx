@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, KeyRound, ArrowRight, Loader2, BarChart3 } from "lucide-react";
+import { SiGoogle } from "react-icons/si";
 
 export default function AuthPage() {
   const [step, setStep] = useState<"email" | "otp">("email");
@@ -57,6 +58,10 @@ export default function AuthPage() {
     );
   };
 
+  const handleGoogleSignIn = () => {
+    window.location.href = "/api/auth/google";
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-8">
@@ -81,39 +86,61 @@ export default function AuthPage() {
             </CardTitle>
             <CardDescription>
               {step === "email"
-                ? "Enter your email to receive a one-time code"
+                ? "Use your Google account or email to sign in"
                 : `We sent a 6-digit code to ${email}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {step === "email" ? (
-              <form onSubmit={handleRequestOtp} className="space-y-4">
-                <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                    data-testid="input-email"
-                    required
-                  />
-                </div>
+              <div className="space-y-4">
                 <Button
-                  type="submit"
+                  type="button"
+                  variant="outline"
                   className="w-full"
-                  disabled={loginMutation.isPending || !email}
-                  data-testid="button-send-otp"
+                  onClick={handleGoogleSignIn}
+                  data-testid="button-google-signin"
                 >
-                  {loginMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  ) : (
-                    <ArrowRight className="w-4 h-4 mr-2" />
-                  )}
-                  Continue with Email
+                  <SiGoogle className="w-4 h-4 mr-2" />
+                  Continue with Google
                 </Button>
-              </form>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+
+                <form onSubmit={handleRequestOtp} className="space-y-4">
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10"
+                      data-testid="input-email"
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={loginMutation.isPending || !email}
+                    data-testid="button-send-otp"
+                  >
+                    {loginMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <ArrowRight className="w-4 h-4 mr-2" />
+                    )}
+                    Continue with Email
+                  </Button>
+                </form>
+              </div>
             ) : (
               <form onSubmit={handleVerifyOtp} className="space-y-4">
                 {devOtp && (

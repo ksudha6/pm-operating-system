@@ -18,6 +18,7 @@ declare module "http" {
 declare module "express-session" {
   interface SessionData {
     userId: string;
+    oauthState: string;
   }
 }
 

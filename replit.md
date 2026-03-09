@@ -9,16 +9,18 @@ AI-powered Product Manager career platform with three core modules.
 - **Database**: PostgreSQL via Drizzle ORM (Neon serverless)
 - **AI**: OpenAI via Replit AI Integrations (gpt-5.2)
 - **Design**: Dark mode default, Inter font, indigo primary accent
-- **Auth**: Email + OTP authentication with express-session (connect-pg-simple store)
+- **Auth**: Email OTP + Google OAuth with express-session (connect-pg-simple store)
 
 ## Authentication
 
-- Email-based OTP login (6-digit codes, 10 min expiry)
+- **Google Sign-In**: OAuth 2.0 Authorization Code flow via `/api/auth/google` redirect
+  - Requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET env vars
+  - Callback at `/api/auth/google/callback` — auto-creates user from Google profile
+  - Google avatar is displayed in sidebar if available
+- **Email OTP**: 6-digit codes with 10 min expiry, shown on screen (no email service connected)
 - Sessions stored in PostgreSQL via connect-pg-simple
 - New users go through onboarding to set name and choose modules
 - All API routes protected with `requireAuth` middleware
-- In development, OTP code is shown on screen for testing
-- Production: integrate Resend or SendGrid for email delivery
 
 ## Modules
 

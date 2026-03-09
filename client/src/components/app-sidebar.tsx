@@ -77,9 +77,18 @@ export function AppSidebar() {
       <SidebarFooter className="p-4 space-y-3">
         {user && (
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold shrink-0">
-              {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
-            </div>
+            {user.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.name || "User"}
+                className="w-8 h-8 rounded-full shrink-0"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold shrink-0">
+                {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate" data-testid="text-user-name">
                 {user.name || "User"}

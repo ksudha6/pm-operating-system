@@ -4,6 +4,9 @@ import { storage } from "./storage";
 import OpenAI from "openai";
 import crypto from "crypto";
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -119,6 +122,87 @@ export async function registerRoutes(
       res.clearCookie("connect.sid");
       res.json({ message: "Logged out" });
     });
+  });
+
+  app.get("/api/auth/google", (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ error: "Google OAuth not configured" });
+    }
+
+    const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+    const state = crypto.randomBytes(16).toString("hex");
+    req.session.oauthState = state;
+
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      state,
+      access_type: "offline",
+      prompt: "select_account",
+    });
+
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+
+      if (!code || !state || state !== req.session.oauthState) {
+        return res.redirect("/?error=invalid_state");
+      }
+      delete req.session.oauthState;
+
+      const redirectUri = `${req.protocol}://${req.get("host")}/api/auth/google/callback`;
+
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code: code as string,
+          client_id: GOOGLE_CLIENT_ID!,
+          client_secret: GOOGLE_CLIENT_SECRET!,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      const tokenData = await tokenRes.json() as any;
+      if (!tokenData.access_token) {
+        console.error("Google token error:", tokenData);
+        return res.redirect("/?error=token_failed");
+      }
+
+      const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      const googleUser = await userInfoRes.json() as any;
+
+      if (!googleUser.email) {
+        return res.redirect("/?error=no_email");
+      }
+
+      let user = await storage.getUserByEmail(googleUser.email);
+      if (!user) {
+        user = await storage.createUser({
+          email: googleUser.email.toLowerCase(),
+          name: googleUser.name || null,
+          avatarUrl: googleUser.picture || null,
+          selectedModules: [],
+          onboardingComplete: false,
+        });
+      } else if (googleUser.picture && !user.avatarUrl) {
+        user = await storage.updateUser(user.id, { avatarUrl: googleUser.picture });
+      }
+
+      req.session.userId = user.id;
+      res.redirect("/");
+    } catch (err: any) {
+      console.error("Google OAuth error:", err);
+      res.redirect("/?error=google_auth_failed");
+    }
   });
 
   app.patch("/api/auth/profile", requireAuth, async (req, res) => {
