@@ -300,11 +300,34 @@ export async function registerRoutes(
 
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
+        let correctedAnswer = q.correctAnswer ?? 0;
+
+        if (q.explanation && q.options) {
+          const explanation = q.explanation.toLowerCase();
+          const optionLetterMap: Record<string, number> = { a: 0, b: 1, c: 2, d: 3 };
+          const mentionPatterns = [
+            /(?:correct answer|answer is|matches option|therefore option|the answer is)\s*(?:option\s*)?([abcd])\b/i,
+            /option\s+([abcd])\s*(?:is correct|is the correct|is right)/i,
+            /\b([abcd])\s*(?:is the correct|is correct)/i,
+          ];
+          for (const pattern of mentionPatterns) {
+            const match = q.explanation.match(pattern);
+            if (match) {
+              const mentionedIndex = optionLetterMap[match[1].toLowerCase()];
+              if (mentionedIndex !== undefined && mentionedIndex !== correctedAnswer) {
+                console.log(`Corrected answer for Q${i + 1}: AI said index ${correctedAnswer} but explanation references option ${match[1].toUpperCase()} (index ${mentionedIndex})`);
+                correctedAnswer = mentionedIndex;
+              }
+              break;
+            }
+          }
+        }
+
         const answer = await storage.createAptitudeAnswer({
           attemptId: attempt.id,
           questionText: q.question || q.questionText || "",
           options: q.options || [],
-          correctAnswer: q.correctAnswer ?? 0,
+          correctAnswer: correctedAnswer,
           selectedAnswer: null,
           isCorrect: null,
           timeSpentSeconds: 0,
@@ -716,6 +739,14 @@ Requirements:
 - Vary the question structure and approach
 - Make questions realistic and relevant to PM interviews
 - Include detailed explanations for the correct answer
+- Randomize where the correct answer appears — don't always put it in the same position
+
+CRITICAL INSTRUCTIONS FOR correctAnswer:
+- correctAnswer is a 0-based index: A=0, B=1, C=2, D=3
+- You MUST verify your correctAnswer matches your explanation
+- First solve the problem completely, then determine which option matches the solution, then set correctAnswer to that option's index
+- Double-check: if the answer is option A, correctAnswer must be 0. If B, must be 1. If C, must be 2. If D, must be 3.
+- Do NOT confuse the option letter with its index
 
 Return a JSON object with this exact structure:
 {
@@ -724,12 +755,12 @@ Return a JSON object with this exact structure:
       "question": "The full question text",
       "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
       "correctAnswer": 0,
-      "explanation": "Detailed explanation of why this answer is correct"
+      "explanation": "Detailed step-by-step explanation showing the calculation/reasoning and confirming which option (A/B/C/D) is correct"
     }
   ]
 }
 
-correctAnswer is the 0-indexed position of the correct option.`;
+correctAnswer is the 0-indexed position: A=0, B=1, C=2, D=3. Verify it matches your explanation before outputting.`;
 }
 
 function buildCaseSystemPrompt(caseType: string, mode: string): string {

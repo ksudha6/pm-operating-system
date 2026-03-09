@@ -27,12 +27,17 @@ AI-powered Product Manager career platform with three core modules.
 ### 1. PM Interview Gym (`/interview-gym`)
 - AI-generated aptitude tests (10 questions, 5 categories, 4 difficulty levels)
 - Categories: Quantitative Reasoning, Data Interpretation, Product Analytics, Root Cause Analysis, Product Sense
+- **Timed exams** (Agoda PM standard): Easy 20min, Medium 15min, Hard 12min, Very Hard 10min
+- Countdown timer with color warnings; auto-completes on expiry
+- Server-side time enforcement on answer submissions
 - Session tracking with accuracy %, history, weakest topic detection
 
 ### 2. Case Simulator (`/case-simulator`)
 - AI interviewer for product cases (product sense, growth, monetization, retention, AI strategy)
 - L6 Mode (Senior PM) and L7 Director Mode
 - Director Mode adds org design, vision/strategy, stakeholder conflict questions
+- **30-minute timed sessions** with countdown timer; auto-ends on expiry
+- Server-side time enforcement on message submissions
 - Streaming chat interface with end-session feedback
 
 ### 3. Career Copilot (`/career-copilot`)
